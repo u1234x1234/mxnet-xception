@@ -5,7 +5,7 @@ import joblib
 import cv2
 import re
 
-weights = joblib.load('d2.pkl')
+weights = joblib.load('../d2.pkl')
 
 keras_arg_params = dict()
 keras_aux_params = dict()
@@ -45,7 +45,7 @@ for l in weights:
     print(layer_name, w.shape)
 
 
-image = cv2.imread('1.jpg')
+image = cv2.imread('../1.jpg')
 image = cv2.resize(image, (299, 299))
 x = np.transpose(image, (2, 0, 1))
 x.shape = (1,) + x.shape
@@ -58,7 +58,7 @@ def separable_conv(data, num_in_ch, num_out_ch, kernel, pad, name, depth_mult=1)
     #  depthwise convolution
     channels = mx.sym.SliceChannel(data, axis=1, num_outputs=num_in_ch)
     dw_outs = [mx.sym.Convolution(data=channels[i], num_filter=depth_mult,
-                                  kernel=(3, 3), pad=pad, no_bias=True,
+                                  pad=pad, kernel=(3, 3), no_bias=True,
                                   name=name+'_depthwise_kernel'+str(i))
                for i in range(num_in_ch)]
     dw_out = mx.sym.Concat(*dw_outs)
@@ -89,8 +89,9 @@ bl2 = mx.sym.Activation(bl2, act_type='relu', name='block2_sepconv1_act')
 bl2 = separable_conv(bl2, 128, 128, (3, 3), (1, 1), 'block2_sepconv2')
 bl2 = mx.sym.BatchNorm(bl2, name='block2_sepconv2_bn')
 
+bl2 = mx.sym.Pad(bl2, mode='edge', pad_width=(0, 0, 0, 0, 1, 1, 1, 1))
 bl2 = mx.sym.Pooling(bl2, kernel=(3, 3), stride=(2, 2), pool_type='max',
-                     pad=(1, 1), name='block2_pool')
+                     pooling_convention='full', name='block2_pool')
 bl2 = bl2 + res2
 
 # block 3
@@ -99,14 +100,15 @@ res3 = mx.sym.Convolution(bl2, num_filter=256, kernel=(1, 1), stride=(2, 2),
                           no_bias=True, name='convolution2d_2')
 res3 = mx.sym.BatchNorm(res3, name='batchnormalization_2')
 
-bl3 = separable_conv(bl2, 128, 256, (3, 3), (1, 1), 'block3_sepconv1')
+bl3 = mx.sym.Activation(bl2, act_type='relu', name='block3_sepconv1_act')
+bl3 = separable_conv(bl3, 128, 256, (3, 3), (1, 1), 'block3_sepconv1')
 bl3 = mx.sym.BatchNorm(bl3, name='block3_sepconv1_bn')
-bl3 = mx.sym.Activation(bl3, act_type='relu', name='block3_sepconv1_act')
+bl3 = mx.sym.Activation(bl3, act_type='relu', name='block3_sepconv2_act')
 bl3 = separable_conv(bl3, 256, 256, (3, 3), (1, 1), 'block3_sepconv2')
 bl3 = mx.sym.BatchNorm(bl3, name='block3_sepconv2_bn')
 
 bl3 = mx.sym.Pooling(bl3, kernel=(3, 3), stride=(2, 2), pool_type='max',
-                     pad=(1, 1), name='block3_pool')
+                     pooling_convention='full', name='block3_pool')
 bl3 = bl3 + res3
 
 # block 4
@@ -115,21 +117,24 @@ res4 = mx.sym.Convolution(bl3, num_filter=728, kernel=(1, 1), stride=(2, 2),
                           no_bias=True, name='convolution2d_3')
 res4 = mx.sym.BatchNorm(res4, name='batchnormalization_3')
 
-bl4 = separable_conv(bl3, 256, 728, (3, 3), (1, 1), 'block4_sepconv1')
+bl4 = mx.sym.Activation(bl3, act_type='relu', name='block4_sepconv1_act')
+bl4 = separable_conv(bl4, 256, 728, (3, 3), (1, 1), 'block4_sepconv1')
 bl4 = mx.sym.BatchNorm(bl4, name='block4_sepconv1_bn')
-bl4 = mx.sym.Activation(bl4, act_type='relu', name='block4_sepconv1_act')
+bl4 = mx.sym.Activation(bl4, act_type='relu', name='block4_sepconv2_act')
 bl4 = separable_conv(bl4, 728, 728, (3, 3), (1, 1), 'block4_sepconv2')
 bl4 = mx.sym.BatchNorm(bl4, name='block4_sepconv2_bn')
 
+bl4 = mx.sym.Pad(bl4, mode='edge', pad_width=(0, 0, 0, 0, 1, 1, 1, 1))
 bl4 = mx.sym.Pooling(bl4, kernel=(3, 3), stride=(2, 2), pool_type='max',
-                     pad=(1, 1), name='block4_pool')
+                     pooling_convention='full', name='block4_pool')
 bl4 = bl4 + res4
 
+bl = bl4
 for i in range(8):
-    residual = bl4
+    residual = bl
     prefix = 'block' + str(i + 5)
 
-    bl = mx.sym.Activation(bl4, act_type='relu', name=prefix+'_sepconv1_act')
+    bl = mx.sym.Activation(bl, act_type='relu', name=prefix+'_sepconv1_act')
     bl = separable_conv(bl, 728, 728, (3, 3), (1, 1), prefix+'_sepconv1')
     bl = mx.sym.BatchNorm(bl, name=prefix+'_sepconv1_bn')
     bl = mx.sym.Activation(bl, act_type='relu', name=prefix+'_sepconv2_act')
@@ -152,8 +157,9 @@ bl13 = mx.sym.Activation(bl13, act_type='relu', name='block13_sepconv2_act')
 bl13 = separable_conv(bl13, 728, 1024, (3, 3), (1, 1), 'block13_sepconv2')
 bl13 = mx.sym.BatchNorm(bl13, name='block13_sepconv2_bn')
 
+bl13 = mx.sym.Pad(bl13, mode='edge', pad_width=(0, 0, 0, 0, 1, 1, 1, 1))
 bl13 = mx.sym.Pooling(bl13, kernel=(3, 3), stride=(2, 2), pool_type='max',
-                      pad=(1, 1), name='block13_pool')
+                      name='block13_pool')
 bl13 = bl13 + res5
 
 bl14 = separable_conv(bl13, 1024, 1536, (3, 3), (1, 1), 'block14_sepconv1')
@@ -167,6 +173,7 @@ pool = mx.sym.Pooling(bl14, kernel=(10, 10), global_pool=True, pool_type='avg',
                       name='global_pool')
 fc = mx.symbol.FullyConnected(data=pool, num_hidden=1000, name='predictions')
 softmax = mx.symbol.SoftmaxOutput(data=fc, name='softmax')
+
 
 mod = mx.module.Module(softmax)
 mod.bind(data_shapes=[('data', (1, 3, 299, 299))], for_training=False)
@@ -186,5 +193,6 @@ out = mod.predict(x).asnumpy()
 
 print(out.shape)
 print(np.sum(out[0, 0]))
-print(np.sum(out[0, 37]))
+print(np.sum(out[0, 507]))
 print(out.argmax())
+print(out[0, out.argmax()])
